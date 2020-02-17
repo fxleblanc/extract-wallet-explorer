@@ -76,6 +76,7 @@ def transactions_from_node_id(node_id, current_hop):
     return transactions.append(new_transactions)
 
 def crawl(address):
+    logger.debug(f'crawling address {address}')
     node_id = get_node_from_address(address)
     transactions = transactions_from_node_id(node_id, 1)
     transactions['price_usd'] = transactions['date'].str.split(' ').str[0].apply(lambda x: conversion_table[x])
@@ -94,8 +95,13 @@ def crawl(address):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("address", help="Specify an address to crawl on wallet explorer")
+    parser.add_argument("-a", "--address", help="Specify an address to crawl on wallet explorer")
+    parser.add_argument("-f", "--file", help="Specify a file containing a list of addresses to crawl on wallet explorer")
     args = parser.parse_args()
+    if args.file:
+        with open(args.file, "r") as addr_file:
+            for address in addr_file:
+                crawl(address.rstrip())
     if args.address:
         crawl(args.address)
 
