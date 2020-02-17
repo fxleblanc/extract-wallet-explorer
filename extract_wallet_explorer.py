@@ -42,15 +42,13 @@ conversion_table[today] = json.loads(
 
 base_url = 'https://www.walletexplorer.com'
 
-HOP_THRESHOLD = 2
-
 def get_node_from_address(address):
     resp = requests.get(f"{base_url}/?q={address}")
     soup = BeautifulSoup(resp.text, 'html.parser')
     tx_csv_url = soup.find('a', string="Download as CSV")['href']
     return re.match('/wallet/(\w+)\?format=csv', tx_csv_url).group(1)
 
-def transactions_from_node_id(node_id, current_hop):
+def transactions_from_node_id(node_id, current_hop, max_hops):
     logger.debug(f'crawling node {node_id} with hop {current_hop}')
     url = f'{base_url}/wallet/{node_id}?format=csv'
     transactions = pd.read_csv(url, skiprows=1)
@@ -61,9 +59,9 @@ def transactions_from_node_id(node_id, current_hop):
     
     new_hop = current_hop + 1
     new_transactions = None
-    if new_hop <= HOP_THRESHOLD:
+    if new_hop <= max_hops:
         new_nodes = transactions['received from'].append(transactions['sent to']).str.extractall('(\w{16})')[0].tolist()
-        tx_list = [transactions_from_node_id(x, new_hop) for x in new_nodes]
+        tx_list = [transactions_from_node_id(x, new_hop, max_hops) for x in new_nodes]
         new_transactions = pd.concat(tx_list)
     
     # Replace na values by the current node_id
@@ -75,10 +73,10 @@ def transactions_from_node_id(node_id, current_hop):
     
     return transactions.append(new_transactions)
 
-def crawl(address):
+def crawl(address, max_hops):
     logger.debug(f'crawling address {address}')
     node_id = get_node_from_address(address)
-    transactions = transactions_from_node_id(node_id, 1)
+    transactions = transactions_from_node_id(node_id, 1, max_hops)
     transactions['price_usd'] = transactions['date'].str.split(' ').str[0].apply(lambda x: conversion_table[x])
     transactions['sum_usd'] = np.where(transactions['received amount'].isna(), transactions['sent amount'] * transactions['price_usd'], transactions['received amount'] * transactions['price_usd'])
 
@@ -93,17 +91,14 @@ def crawl(address):
     final_nodes = transactions[col_map.keys()].rename(columns=col_map)
     final_nodes.to_csv(f'{address}({node_id})_nodes.csv', index=False)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-a", "--address", help="Specify an address to crawl on wallet explorer")
-    parser.add_argument("-f", "--file", help="Specify a file containing a list of addresses to crawl on wallet explorer")
-    args = parser.parse_args()
-    if args.file:
-        with open(args.file, "r") as addr_file:
-            for address in addr_file:
-                crawl(address.rstrip())
-    if args.address:
-        crawl(args.address)
-
-if __name__ == "__main__":
-    main()
+parser = argparse.ArgumentParser()
+parser.add_argument("-a", "--address", help="Specify an address to crawl on wallet explorer")
+parser.add_argument("-f", "--file", help="Specify a file containing a list of addresses to crawl on wallet explorer")
+parser.add_argument("-d", "--depth", type=int, default=1, help="Specify the depth of crawling by the number of hops")
+args = parser.parse_args()
+if args.file:
+    with open(args.file, "r") as addr_file:
+        for address in addr_file:
+            crawl(address.rstrip(), args.depth)
+if args.address:
+    crawl(args.address, args.depth)
