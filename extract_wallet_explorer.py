@@ -100,5 +100,7 @@ if args.file:
     with open(args.file, "r") as addr_file:
         for address in addr_file:
             crawl(address.rstrip(), args.depth)
-if args.address:
+elif args.address:
     crawl(args.address, args.depth)
+else:
+    parser.print_help()

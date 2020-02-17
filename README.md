@@ -8,3 +8,4 @@ Simple script to extract nodes and transactions related to bitcoin addresses. Us
 3. Install python dependencies with `pip install -r requirements.txt`
 4. Launch the script with a single address: `python extract_wallet_explorer.py -a [btc_address]`
 5. Launch the script with a file containing multiple addresses: `python extract_wallet_explorer.py -f [file]`
+6. You can also specify the depth of crawling with -d or --depth param: `python extract_wallet_explorer.py -f [file] -d [depth]`
