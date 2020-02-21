@@ -48,20 +48,35 @@ def get_node_from_address(address):
     tx_csv_url = soup.find('a', string="Download as CSV")['href']
     return re.match('/wallet/(\w+)\?format=csv', tx_csv_url).group(1)
 
-def transactions_from_node_id(node_id, current_hop, max_hops):
+def transactions_from_node_id(node_id, current_hop, max_hops, tx_type=None):
     logger.debug(f'crawling node {node_id} with hop {current_hop}')
     url = f'{base_url}/wallet/{node_id}?format=csv'
     transactions = pd.read_csv(url, skiprows=1)
     
     # Remove the fee transactions
     transactions = transactions[~transactions['sent to'].isin(['(fee)'])]
+
+    # Filter transactions based on type
+    if tx_type == "in":
+        transactions = transactions.dropna(subset=['received from'])
+    elif tx_type == "out":
+        transactions = transactions.dropna(subset=['sent to'])
+
+    # Calculate current hop on transactions
     transactions['hop'] = np.where(transactions['received from'].isna(), current_hop, -current_hop)
     
     new_hop = current_hop + 1
     new_transactions = None
     if new_hop <= max_hops:
-        new_nodes = transactions['received from'].append(transactions['sent to']).str.extractall('(\w{16})')[0].tolist()
-        tx_list = [transactions_from_node_id(x, new_hop, max_hops) for x in new_nodes]
+        if tx_type == "in":
+            new_nodes = transactions['received from']
+        elif tx_type == "out":
+            new_nodes = transactions['sent to']
+        else:
+            new_nodes = transactions['received from'].append(transactions['sent to'])
+        new_nodes = new_nodes.str.extractall('(\w{16})')[0].tolist()
+
+        tx_list = [transactions_from_node_id(x, new_hop, max_hops, tx_type) for x in new_nodes]
         new_transactions = pd.concat(tx_list)
     
     # Replace na values by the current node_id
@@ -73,10 +88,10 @@ def transactions_from_node_id(node_id, current_hop, max_hops):
     
     return transactions.append(new_transactions)
 
-def crawl(address, max_hops):
+def crawl(address, max_hops, tx_type=None):
     logger.debug(f'crawling address {address}')
     node_id = get_node_from_address(address)
-    transactions = transactions_from_node_id(node_id, 1, max_hops)
+    transactions = transactions_from_node_id(node_id, 1, max_hops, tx_type)
     transactions['price_usd'] = transactions['date'].str.split(' ').str[0].apply(lambda x: conversion_table[x])
     transactions['sum_usd'] = np.where(transactions['received amount'].isna(), transactions['sent amount'] * transactions['price_usd'], transactions['received amount'] * transactions['price_usd'])
 
@@ -95,12 +110,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-a", "--address", help="Specify an address to crawl on wallet explorer")
 parser.add_argument("-f", "--file", help="Specify a file containing a list of addresses to crawl on wallet explorer")
 parser.add_argument("-d", "--depth", type=int, default=1, help="Specify the depth of crawling by the number of hops")
+parser.add_argument("-t", "--type", help="Specify the type of transactions you want to crawl")
 args = parser.parse_args()
 if args.file:
     with open(args.file, "r") as addr_file:
         for address in addr_file:
-            crawl(address.rstrip(), args.depth)
+            crawl(address.rstrip(), args.depth, args.type)
 elif args.address:
-    crawl(args.address, args.depth)
+    crawl(args.address, args.depth, args.type)
 else:
     parser.print_help()
