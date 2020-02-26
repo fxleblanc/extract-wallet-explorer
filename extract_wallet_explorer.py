@@ -62,8 +62,13 @@ def transactions_from_node_id(node_id, current_hop, max_hops, tx_type=None):
     # Filter transactions based on type
     if tx_type == "in":
         transactions = transactions.dropna(subset=['received from'])
+        transactions['sent to'] = transactions['sent to'].str.extract(r'([a-z0-9]{16})')
     elif tx_type == "out":
         transactions = transactions.dropna(subset=['sent to'])
+        transactions['received from'] = transactions['received from'].str.extract(r'([a-z0-9]{16})')
+    else:
+        transactions['received from'] = transactions['received from'].str.extract(r'([a-z0-9]{16})')
+        transactions['sent to'] = transactions['sent to'].str.extract(r'([a-z0-9]{16})')
 
     # Calculate current hop on transactions
     transactions['hop'] = np.where(transactions['received from'].isna(), current_hop, -current_hop)
